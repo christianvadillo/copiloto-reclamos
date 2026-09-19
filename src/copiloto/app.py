@@ -31,7 +31,7 @@ from copiloto.config import Settings
 from copiloto.domain import Action
 from copiloto.drafting.guardrails import check_message
 from copiloto.meli.client import extract_claim_id
-from copiloto.meli.oauth import authorization_url, exchange_code, fetch_me, generate_state
+from copiloto.meli.oauth import authorization_url, exchange_code, fetch_me, generate_pkce_pair, generate_state
 from copiloto.store import Store
 
 logger = logging.getLogger(__name__)
@@ -90,7 +90,9 @@ def create_app(settings: Settings, store: Store | None = None, http_client: http
     http_client = http_client if http_client is not None else httpx.Client(timeout=15.0)
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
     security = HTTPBasic(auto_error=False)
-    oauth_states: set[str] = set()  # `state` emitidos por /oauth/start, pendientes de callback
+    # `state` emitido por /oauth/start → verificador PKCE, pendiente de callback. PKCE (S256) va
+    # siempre: ML lo recomienda y, si la app lo exige, sin él el canje falla.
+    oauth_states: dict[str, str] = {}
 
     app = FastAPI(title="Copiloto de reclamos")
 
@@ -167,8 +169,9 @@ def create_app(settings: Settings, store: Store | None = None, http_client: http
     @app.get("/oauth/start")
     def oauth_start() -> RedirectResponse:
         state = generate_state()
-        oauth_states.add(state)
-        return RedirectResponse(authorization_url(settings, state))
+        pkce = generate_pkce_pair()
+        oauth_states[state] = pkce.verifier
+        return RedirectResponse(authorization_url(settings, state, code_challenge=pkce.challenge))
 
     @app.get("/oauth/callback", response_class=HTMLResponse)
     def oauth_callback(code: str | None = None, state: str | None = None, error: str | None = None) -> HTMLResponse:
@@ -176,8 +179,8 @@ def create_app(settings: Settings, store: Store | None = None, http_client: http
             raise HTTPException(status_code=400, detail=f"Mercado Libre devolvió un error: {error}")
         if not code or not state or state not in oauth_states:
             raise HTTPException(status_code=400, detail="state inválido, expirado o ausente")
-        oauth_states.discard(state)
-        tokens = exchange_code(http_client, settings, code)
+        code_verifier = oauth_states.pop(state)
+        tokens = exchange_code(http_client, settings, code, code_verifier=code_verifier)
         me = fetch_me(http_client, settings, tokens.access_token)
         seller_id = str(me.get("id") or tokens.user_id)
         store.upsert_seller(seller_id, me.get("nickname"), tokens.access_token, tokens.refresh_token, tokens.expires_at)

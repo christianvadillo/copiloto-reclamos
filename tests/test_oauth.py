@@ -73,7 +73,9 @@ def test_oauth_start_and_callback_registers_seller(settings, store, fake):
     assert start_resp.status_code in (302, 307)
     location = start_resp.headers["location"]
     assert location.startswith(settings.auth_base_url)
-    oauth_state = parse_qs(urlparse(location).query)["state"][0]
+    query = parse_qs(urlparse(location).query)
+    oauth_state = query["state"][0]
+    assert query["code_challenge_method"] == ["S256"] and len(query["code_challenge"][0]) >= 43  # PKCE
 
     code = state.issue_auth_code(state.seller_id)
     callback_resp = client.get("/oauth/callback", params={"code": code, "state": oauth_state})
