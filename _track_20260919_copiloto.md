@@ -159,3 +159,9 @@ aprobación humana por defecto. Repo local + remoto privado en GitHub.
   closed_by respondent, benefited complainant) y el copiloto registró el resultado en
   `outcomes`. Bug encontrado al reiniciar el servidor a mitad de un job: los jobs en `running`
   nunca se retomaban → lease de 10 min en `claim_job`. 165 tests.
+- 2026-09-19 — **Decisión: pausa comercial.** El usuario no quiere invertir tiempo en entrevistas
+  con vendedores; sin eso el camino SaaS no tiene forma de validarse. El repo se reorienta a
+  pieza de portafolio para su búsqueda de trabajo: README con "qué demuestra", capturas reales
+  (panel, detalle con ranking, el reclamo real cerrado), diagrama Mermaid del flujo, la lección
+  de las 6 diferencias de contrato, y `docs/GUION_ENTREVISTA.md` (3 min + preguntas frecuentes
+  + qué archivos enseñar). No se hace hosting ni onboarding: el código queda funcionando.

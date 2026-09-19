@@ -76,10 +76,10 @@ flowchart TD
     WH --> Q[(cola SQLite)]
     REC[reconciliador<br/>claims/search + missed_feeds] --> Q
     Q --> W[worker]
-    W --> CTX[lee claim, motivo, orden, envio,<br/>mensajes, expected-resolutions,<br/>affects-reputation, fotos]
+    W --> CTX[lee claim, motivo, orden, envío,<br/>mensajes, expected-resolutions,<br/>affects-reputation, fotos]
     CTX --> CLS[clasifica<br/>taxonomy]
-    CTX --> EV[puntua evidencia<br/>decision/evidence]
-    CTX --> REP["reputacion del vendedor<br/>lambda = precio sombra"]
+    CTX --> EV[puntúa evidencia<br/>decision/evidence]
+    CTX --> REP["reputación del vendedor<br/>λ = precio sombra"]
     CLS --> DEC{recomendador<br/>Monte Carlo sobre la posterior}
     EV --> DEC
     REP --> DEC
