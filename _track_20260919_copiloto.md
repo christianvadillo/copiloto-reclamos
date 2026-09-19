@@ -39,8 +39,8 @@ aprobación humana por defecto. Repo local + remoto privado en GitHub.
       consumiendo el RNG compartido; ahora itera la tupla `_ESC_ACTIONS` en el orden de declaración
       de `Action`. Solo cambia qué sorteo cae en qué llave. Test: `tests/test_decision_determinism.py`
 - [x] Revisión del hilo principal (Opus) — ver bitácora: 9 correcciones de correctitud/seguridad
-- [ ] Commit inicial + repo remoto privado + push
-- [ ] Vault: nota en `diario-global/` (convención de proyectos no-bot, como Metrónomo y Caso Abierto) + memoria
+- [x] Commit inicial + repo remoto privado + push
+- [x] Vault: nota en `diario-global/` (convención de proyectos no-bot, como Metrónomo y Caso Abierto) + memoria
 
 ## VALIDACIÓN
 
