@@ -20,6 +20,7 @@ from csv import DictReader
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from copiloto.config import Settings
 from copiloto.decision.evidence import ML_LOGISTICS, EvidenceFacts, score_evidence
@@ -37,7 +38,7 @@ from copiloto.domain import (
 )
 from copiloto.drafting import drafter
 from copiloto.drafting.llm import classify_claim_text
-from copiloto.meli.client import MeliClient, extract_claim_id
+from copiloto.meli.client import MeliClient, MeliError, extract_claim_id
 from copiloto.store import Store
 from copiloto.taxonomy import classify, map_available_actions, normalize_text
 
@@ -67,6 +68,10 @@ def find_player(claim: dict, role: str) -> dict | None:
 
 
 def extract_order_id(claim: dict) -> str | None:
+    # Real (verificado en vivo): `resource="order"` + `resource_id=<order_id>`, con
+    # `related_entities` vacío. `related_entities` queda como respaldo.
+    if claim.get("resource") == "order" and claim.get("resource_id"):
+        return str(claim["resource_id"])
     for ent in claim.get("related_entities") or []:
         if ent.get("type") == "order" and ent.get("id"):
             return str(ent["id"])
@@ -208,6 +213,23 @@ def _build_reputation_state(user: dict, settings: Settings) -> ReputationState:
     )
 
 
+def _logistic_type(shipment: dict) -> str | None:
+    """Tipo de logística del envío. La API real (x-format-new) lo anida en `logistic.type`
+    (fulfillment, cross_docking, drop_off…; None en envíos `custom`); `logistic_type` plano
+    queda por compatibilidad con el formato viejo."""
+    return shipment.get("logistic_type") or (shipment.get("logistic") or {}).get("type")
+
+
+def _expected_actions(body: Any) -> frozenset[str]:
+    """Resoluciones que espera el comprador. Real: lista de
+    `{player_role, user_id, expected_resolution, status}`; también acepta el formato
+    `{"expected_resolutions": [{"action"}]}`."""
+    items = body if isinstance(body, list) else (body or {}).get("expected_resolutions", [])
+    return frozenset(
+        a for e in items if isinstance(e, dict) for a in (e.get("expected_resolution") or e.get("action"),) if a
+    )
+
+
 def _build_evidence_facts(
     *,
     claim: dict,
@@ -225,7 +247,7 @@ def _build_evidence_facts(
     return EvidenceFacts(
         shipment_status=shipment.get("status"),
         shipment_substatus=shipment.get("substatus"),
-        logistic_type=shipment.get("logistic_type"),
+        logistic_type=_logistic_type(shipment),
         tracking_number=shipment.get("tracking_number"),
         delivered_at=delivered_at,
         shipped_at=shipped_at,
@@ -367,9 +389,7 @@ def process_claim(
     rep_state = _build_reputation_state(user, settings)
 
     allowed_actions = map_available_actions(ml_actions, stage=claim.get("stage"))
-    expected_actions = frozenset(
-        e.get("action") for e in expected_body.get("expected_resolutions", []) if e.get("action")
-    )
+    expected_actions = _expected_actions(expected_body)
     partial_offers = tuple(
         sorted(
             {
@@ -534,7 +554,12 @@ def _maybe_record_outcome(
     # Solo tiene sentido preguntar "¿ganó la mediación?" si de verdad hubo mediación.
     mediation_won = ("respondent" in benefited) if escalated else None
 
-    returns_body = meli.get_returns(seller_id, claim_id) or {}
+    try:
+        returns_body = meli.get_returns(seller_id, claim_id) or {}
+    except MeliError as exc:
+        if exc.status != 404:  # 404 = el reclamo no tiene devolución (verificado en vivo)
+            raise
+        returns_body = {}
     review = returns_body.get("warehouse_review") or {}
     condition = str(review.get("product_condition") or "").lower()
     if condition:
@@ -576,7 +601,7 @@ def _maybe_record_outcome(
     claim_row = store.get_claim_row(claim_id)
     if claim_row:
         shipment = (claim_row.get("snapshot") or {}).get("shipment") or {}
-        fulfillment_by_ml = shipment.get("logistic_type") in ML_LOGISTICS
+        fulfillment_by_ml = _logistic_type(shipment) in ML_LOGISTICS
 
     affects_final = meli.get_affects_reputation(seller_id, claim_id)
     rep_status_final = _rep_status_from_body(affects_final)
@@ -625,24 +650,51 @@ def record_outcome(*, store: Store, meli: MeliClient, seller_id: str, claim_id: 
 
 
 def reconcile_seller(*, store: Store, settings: Settings, meli: MeliClient, seller_id: str) -> int:
-    """`claims/search` (status=opened) + `missed_feeds`: red de seguridad contra
-    notificaciones perdidas. Encolar de más no cuesta nada (`process_claim` es idempotente)."""
+    """`claims/search` (status=opened) del vendedor: red de seguridad contra notificaciones
+    perdidas. Encolar de más no cuesta nada (`process_claim` es idempotente). Un error de este
+    vendedor (token revocado, 403) queda como evento y no detiene a los demás."""
     enqueued = 0
-    search_body = meli.search_claims(
-        seller_id, player_role="respondent", player_user_id=seller_id, status="opened", limit=100
-    )
-    for claim in search_body.get("results", []):
-        cid = str(claim.get("id") or claim.get("resource_id") or "")
+    try:
+        search_body = meli.search_claims(
+            seller_id, player_role="respondent", player_user_id=seller_id, status="opened", limit=100
+        )
+    except MeliError as exc:
+        store.add_event(None, seller_id, "reconcile_failed", {"step": "claims_search", "error": str(exc)[:300]})
+        return 0
+    # La API real devuelve {"paging", "data": [...]}; "results" queda por compatibilidad.
+    for claim in search_body.get("data") or search_body.get("results") or []:
+        cid = str(claim.get("id") or "")  # resource_id es la ORDEN, no el reclamo
         if cid:
             store.enqueue_job("process_claim", {"seller_id": seller_id, "claim_id": cid})
             enqueued += 1
-    if settings.app_id:
-        for note in meli.get_missed_feeds(seller_id, app_id=settings.app_id, topic="claims"):
-            cid = extract_claim_id(note.get("resource"))
-            if cid:
-                store.enqueue_job(
-                    "process_claim", {"seller_id": str(note.get("user_id") or seller_id), "claim_id": cid}
-                )
-                enqueued += 1
     store.add_event(None, seller_id, "reconciled", {"enqueued": enqueued})
     return enqueued
+
+
+def reconcile_missed_feeds(*, store: Store, settings: Settings, meli: MeliClient) -> int:
+    """`/missed_feeds` es por APP y solo lo puede leer el dueño de la app (verificado en vivo:
+    401 "You must be the owner of the app" con el token de otro vendedor). Se prueba con cada
+    cuenta conectada hasta que una responda; normalmente es la del desarrollador."""
+    if not settings.app_id:
+        return 0
+    for seller in store.list_sellers():
+        try:
+            notes = meli.get_missed_feeds(seller.id, app_id=settings.app_id, topic="post_purchase")
+        except MeliError as exc:
+            if exc.status in (401, 403):
+                continue  # no es el dueño de la app: probar con la siguiente cuenta
+            store.add_event(None, seller.id, "reconcile_failed", {"step": "missed_feeds", "error": str(exc)[:300]})
+            return 0
+        enqueued = 0
+        for note in notes:
+            cid = extract_claim_id(note.get("resource"))
+            user_id = str(note.get("user_id") or "")
+            if cid and user_id:
+                store.enqueue_job("process_claim", {"seller_id": user_id, "claim_id": cid})
+                enqueued += 1
+        store.add_event(None, seller.id, "missed_feeds_read", {"enqueued": enqueued})
+        return enqueued
+    store.add_event(
+        None, None, "reconcile_failed", {"step": "missed_feeds", "error": "ninguna cuenta es dueña de la app"}
+    )
+    return 0

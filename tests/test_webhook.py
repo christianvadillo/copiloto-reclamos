@@ -66,3 +66,25 @@ def test_health_endpoint(app_client, settings):
     resp = app_client.get("/health")
     assert resp.status_code == 200
     assert resp.json() == {"status": "ok", "mode": settings.mode}
+
+
+def test_real_post_purchase_topic_is_processed(app_client, settings, store):
+    """Formato real observado en vivo: tópico post_purchase y resource de actions-history."""
+    for resource, sent in (
+        ("/post-purchase/v1/claims/5579999933/actions-history", "2026-09-19T21:50:57.479Z"),
+        ("/post-purchase/v1/claims/5579999933", "2026-09-19T21:51:01.996Z"),
+    ):
+        payload = {
+            "_id": resource,
+            "resource": resource,
+            "user_id": 3699950920,
+            "topic": "post_purchase",
+            "application_id": settings.app_id,
+            "attempts": 1,
+            "sent": sent,
+            "received": sent,
+        }
+        assert app_client.post("/notifications", json=payload).status_code == 200
+    assert store.job_counts() == {"queued": 2}
+    job = store.claim_job()
+    assert job.kind == "process_claim" and job.payload == {"seller_id": "3699950920", "claim_id": "5579999933"}

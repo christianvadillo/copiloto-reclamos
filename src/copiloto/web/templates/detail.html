@@ -48,7 +48,7 @@
   {% set shipment = (claim.snapshot or {}).get("shipment") or {} %}
   {% if shipment %}
   <p>Envío: {{ shipment.get("status") or "desconocido" }}
-     &middot; logística: {{ shipment.get("logistic_type") or "—" }}
+     &middot; logística: {{ shipment.get("logistic_type") or (shipment.get("logistic") or {}).get("type") or (shipment.get("logistic") or {}).get("mode") or "—" }}
      &middot; guía: {{ shipment.get("tracking_number") or "—" }}</p>
   {% else %}
   <p class="muted">Sin datos de envío para este reclamo.</p>

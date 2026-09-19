@@ -109,7 +109,7 @@ def test_execution_aborts_if_action_no_longer_available(store, settings, meli, s
 
 def test_defend_uploads_evidence_photos(tmp_path, store, settings, meli, seller_registered, fake):
     _fake_client, state = fake
-    order_id = state.claims["2001"]["related_entities"][0]["id"]
+    order_id = str(state.claims["2001"]["resource_id"])
     photos_dir = tmp_path / order_id
     photos_dir.mkdir(parents=True)
     (photos_dir / "foto1.jpg").write_bytes(b"contenido-fake-de-foto")

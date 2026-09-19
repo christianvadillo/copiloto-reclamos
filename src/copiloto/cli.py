@@ -106,6 +106,7 @@ def cmd_reconcile_once(_args: argparse.Namespace, settings: Settings) -> int:
         pipeline.reconcile_seller(store=store, settings=settings, meli=meli, seller_id=seller.id)
         for seller in store.list_sellers()
     )
+    total += pipeline.reconcile_missed_feeds(store=store, settings=settings, meli=meli)
     worker = Worker(store, settings, meli, llm_client=_build_llm_client(settings))
     worker.run_until_idle()
     print(f"reconciliación: {total} job(s) encolados, cola vaciada")

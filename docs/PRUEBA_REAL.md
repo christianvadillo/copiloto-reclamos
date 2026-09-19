@@ -156,3 +156,33 @@ de pruebas no deja abrir reclamos), la alternativa es:
 4. Validar el mismo checklist del paso 10, pero SIN aprobar/ejecutar nada — solo confirmar que
    clasificación, recomendación y borrador se ven razonables. Si algo se ve mal, es más barato
    corregirlo mirando el dashboard que descubrirlo con dinero real moviéndose.
+
+## Resultado de la prueba real (19-sep-2026)
+
+**Sí funciona con usuarios de prueba.** Un comprador de prueba compró el artículo de un vendedor de
+prueba y abrió el reclamo 5579999933 ("recibí el producto con un problema" → `PDD9947`, embalaje
+dañado). El copiloto recibió la notificación, lo clasificó como `defectuoso` (85 %), recomendó
+reembolso total ($500) y redactó la respuesta con plantilla, en modo sombra sin ejecutar nada.
+
+### Contrato real de la API (distinto de lo documentado o de lo que asumía el simulador)
+
+| Qué | Real | Lo que se asumía |
+|---|---|---|
+| Tópico de la notificación | `post_purchase`; resource `/post-purchase/v1/claims/{id}` o `.../actions-history` | `claims` |
+| `claims/search` | `{"paging", "data": [...]}`; exige `player_role` + `player_user_id` | `results` |
+| Orden del reclamo | `resource="order"`, `resource_id=<order_id>`, `related_entities=[]` | `related_entities` |
+| `expected-resolutions` | lista de `{player_role, user_id, expected_resolution, status}` | `{"expected_resolutions": [{"action"}]}` |
+| `affects-reputation` | `{affects_reputation: "not_affected"…, has_incentive, due_date}` (string) | booleano |
+| `returns` v2 | 404 si no hay devolución | objeto vacío |
+| Envío (`x-format-new`) | `logistic: {mode, type, direction}`; `type` es None en `custom` | `logistic_type` plano |
+| `/missed_feeds` | 401 si no eres el dueño de la app | legible por cualquier vendedor |
+
+Acciones que ML le ofreció al vendedor: `send_message_to_complainant` (obligatoria, vence en ~4
+días) y `refund`. No hubo ofertas de reembolso parcial en esta etapa, así que el ranking tuvo una
+sola opción factible.
+
+### Lecciones de moderación al publicar el artículo de prueba
+
+- Una foto de portada con texto encima se rechaza.
+- Si el título no describe la foto, ML la marca como no coincidente. Funcionó
+  "Item de Prueba - Por favor, NO OFERTAR Caja de Carton" con la foto de una caja.

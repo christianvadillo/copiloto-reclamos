@@ -52,7 +52,10 @@ ML_NOTIFICATION_IPS = frozenset(
         "35.186.182.146",
     }
 )
-_CLAIM_TOPICS = frozenset({"claims", "claims_actions"})
+# Verificado en vivo (2026-09-19, reclamo real de usuarios de prueba): Mercado Libre manda el
+# tópico "post_purchase" con resource /post-purchase/v1/claims/{id} y .../{id}/actions-history.
+# "claims"/"claims_actions" son los nombres de los filtros en DevCenter; se aceptan por si acaso.
+_CLAIM_TOPICS = frozenset({"post_purchase", "claims", "claims_actions"})
 
 
 def _client_ip(request: Request, trusted_proxy: bool) -> str | None:

@@ -147,3 +147,9 @@ aprobación humana por defecto. Repo local + remoto privado en GitHub.
   acceso a la cuenta): holgura, costo mensual de bajar de nivel y λ por reclamo con la curva.
   Modelo portado a JS y verificado contra Python (n=8/11/12/13 → 1,753/6,808/9,696/8,027 con
   L=$60k; vendedor grande idéntico). Publicada también como Artifact privado.
+- 2026-09-19 — **Prueba real de punta a punta con usuarios de prueba: funciona.** Reclamo
+  5579999933 (PDD9947, $500) → defectuoso 85 % → reembolso total, borrador de plantilla, modo
+  sombra. Seis diferencias entre la API real y el simulador, todas corregidas y reflejadas en el
+  fake: tópico `post_purchase`, search en `data`, orden en `resource_id`, expected-resolutions en
+  lista, returns 404 y `logistic.type` anidado; `/missed_feeds` da 401 a quien no es dueño. La
+  orden no se leía, así que el monto salía en $0; ahora sale en $500. 163 tests.

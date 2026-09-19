@@ -121,7 +121,7 @@ class FakeMeliState:
 
     # ── Notificaciones ──────────────────────────────────────────────────────────────────
 
-    def notification_payload(self, claim_id: str, topic: str = "claims") -> dict:
+    def notification_payload(self, claim_id: str, topic: str = "post_purchase") -> dict:
         return {
             "_id": uuid.uuid4().hex,
             "resource": f"/post-purchase/v1/claims/{claim_id}",
@@ -188,7 +188,8 @@ class FakeMeliState:
             "id": shipment_id,
             "status": shipment_status,
             "substatus": None,
-            "logistic_type": logistic_type,
+            # Formato real (x-format-new): la logística va anidada, sin `logistic_type` plano.
+            "logistic": {"mode": "me2", "type": logistic_type, "direction": "forward"},
             "tracking_number": tracking_number,
         }
         if reason_id:
@@ -201,9 +202,10 @@ class FakeMeliState:
             "stage": "claim",
             "type": claim_type,
             "reason_id": reason_id,
-            "resource": f"claims/{claim_id}",
-            "resource_id": claim_id,
-            "related_entities": [{"type": "order", "id": order_id}],
+            # Formato real: la orden va en resource/resource_id y related_entities viene vacío.
+            "resource": "order",
+            "resource_id": int(order_id) if str(order_id).isdigit() else order_id,
+            "related_entities": [],
             "date_created": _iso(now),
             "players": [
                 {"role": "complainant", "type": "buyer", "user_id": DEFAULT_BUYER_ID, "available_actions": []},
@@ -543,7 +545,7 @@ def create_fake_app(state: FakeMeliState | None = None) -> tuple[FastAPI, FakeMe
                     continue
             results.append(state.claim_view(claim["id"]))
         page = results[offset : offset + limit]
-        return {"results": page, "paging": {"total": len(results), "limit": limit, "offset": offset}}
+        return {"data": page, "paging": {"total": len(results), "limit": limit, "offset": offset}}
 
     @app.get("/post-purchase/v1/claims/reasons/{reason_id}")
     def get_reason(reason_id: str, authorization: str = Header(default="")) -> dict:
@@ -564,11 +566,20 @@ def create_fake_app(state: FakeMeliState | None = None) -> tuple[FastAPI, FakeMe
         return {"due_date": _iso(due) if due else None, "action_responsible": "respondent"}
 
     @app.get("/post-purchase/v1/claims/{claim_id}/expected-resolutions")
-    def get_expected_resolutions(claim_id: str, authorization: str = Header(default="")) -> dict:
+    def get_expected_resolutions(claim_id: str, authorization: str = Header(default="")) -> list[dict]:
         _check_bearer(authorization)
-        _claim_or_404(claim_id)
-        actions = state.expected_resolutions.get(claim_id, [])
-        return {"expected_resolutions": [{"action": a} for a in actions]}
+        claim = _claim_or_404(claim_id)
+        buyer = next((p for p in claim.get("players", []) if p.get("role") == "complainant"), {})
+        # Formato real: una entrada por resolución esperada del comprador.
+        return [
+            {
+                "player_role": "complainant",
+                "user_id": buyer.get("user_id"),
+                "expected_resolution": a,
+                "status": "pending",
+            }
+            for a in state.expected_resolutions.get(claim_id, [])
+        ]
 
     @app.get("/post-purchase/v1/claims/{claim_id}/partial-refund/available-offers")
     def get_partial_offers(claim_id: str, authorization: str = Header(default="")) -> dict:
@@ -669,7 +680,9 @@ def create_fake_app(state: FakeMeliState | None = None) -> tuple[FastAPI, FakeMe
     def get_returns(claim_id: str, authorization: str = Header(default="")) -> dict:
         _check_bearer(authorization)
         _claim_or_404(claim_id)
-        return state.returns_v2.get(claim_id, {"warehouse_review": {"result": None}})
+        if claim_id not in state.returns_v2:  # real: 404 cuando el reclamo no tiene devolución
+            raise HTTPException(status_code=404, detail="return not found")
+        return state.returns_v2[claim_id]
 
     # ── Órdenes y envíos ────────────────────────────────────────────────────────────────
 
@@ -706,7 +719,7 @@ def create_fake_app(state: FakeMeliState | None = None) -> tuple[FastAPI, FakeMe
 
     @app.get("/missed_feeds")
     def missed_feeds(
-        app_id: str = Query(...), topic: str = Query(default="claims"), authorization: str = Header(default="")
+        app_id: str = Query(...), topic: str = Query(default="post_purchase"), authorization: str = Header(default="")
     ) -> list[dict]:
         _check_bearer(authorization)
         del app_id

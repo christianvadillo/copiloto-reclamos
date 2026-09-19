@@ -210,11 +210,11 @@ class MeliClient:
 
     def get_status_history(self, seller_id: str, claim_id: str) -> list[dict]:
         body = self._get(f"/post-purchase/v1/claims/{claim_id}/status-history", seller_id)
-        return body if isinstance(body, list) else body.get("results", [])
+        return body if isinstance(body, list) else (body.get("data") or body.get("results") or [])
 
     def get_actions_history(self, seller_id: str, claim_id: str) -> list[dict]:
         body = self._get(f"/post-purchase/v1/claims/{claim_id}/actions-history", seller_id)
-        return body if isinstance(body, list) else body.get("results", [])
+        return body if isinstance(body, list) else (body.get("data") or body.get("results") or [])
 
     def get_returns(self, seller_id: str, claim_id: str) -> dict:
         return self._get(f"/post-purchase/v2/claims/{claim_id}/returns", seller_id)
@@ -255,6 +255,6 @@ class MeliClient:
 
     # ── Notificaciones perdidas ─────────────────────────────────────────────────────────
 
-    def get_missed_feeds(self, seller_id: str, app_id: str, topic: str = "claims") -> list[dict]:
+    def get_missed_feeds(self, seller_id: str, app_id: str, topic: str = "post_purchase") -> list[dict]:
         body = self._get("/missed_feeds", seller_id, params={"app_id": app_id, "topic": topic})
-        return body if isinstance(body, list) else body.get("results", [])
+        return body if isinstance(body, list) else (body.get("data") or body.get("results") or [])
