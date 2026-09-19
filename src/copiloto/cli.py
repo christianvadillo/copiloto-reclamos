@@ -45,8 +45,42 @@ def cmd_serve(args: argparse.Namespace, settings: Settings) -> int:
 
     from copiloto.app import create_app
 
+    if not (settings.dashboard_user and settings.dashboard_password) and not args.sin_auth:
+        # Con un túnel (Tailscale Funnel, cloudflared) el panel queda en internet: reclamos con
+        # mensajes de compradores y botones de aprobar. Sin contraseña no se levanta.
+        print(
+            "error: el panel quedaría sin contraseña. Define COPILOTO_DASHBOARD_USER y "
+            "COPILOTO_DASHBOARD_PASSWORD, o usa --sin-auth solo si nadie más puede llegar al puerto.",
+            file=sys.stderr,
+        )
+        return 2
     app = create_app(settings)
-    uvicorn.run(app, host=args.host, port=args.port)
+    stop = None
+    if args.con_worker:
+        import logging
+        import threading
+
+        logging.basicConfig(level=logging.INFO)
+        store = _build_store(settings)
+        meli = MeliClient(settings.meli_base_url, TokenProvider(store, settings))
+        worker = Worker(store, settings, meli, llm_client=_build_llm_client(settings))
+        stop = threading.Event()
+
+        def loop() -> None:
+            while not stop.is_set():
+                try:
+                    if not worker.run_once():
+                        stop.wait(2.0)
+                except Exception:  # un job roto no tumba el servidor; queda en el log
+                    logging.getLogger("copiloto.worker").exception("job falló")
+                    stop.wait(5.0)
+
+        threading.Thread(target=loop, name="copiloto-worker", daemon=True).start()
+    try:
+        uvicorn.run(app, host=args.host, port=args.port)
+    finally:
+        if stop is not None:
+            stop.set()
     return 0
 
 
@@ -256,8 +290,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("serve", help="levanta el webhook + dashboard (uvicorn)")
-    p.add_argument("--host", default="0.0.0.0")
+    p.add_argument("--host", default="127.0.0.1", help="0.0.0.0 solo dentro de un contenedor")
     p.add_argument("--port", type=int, default=8000)
+    p.add_argument("--sin-auth", action="store_true", help="permitir el panel sin contraseña (solo local)")
+    p.add_argument("--con-worker", action="store_true", help="corre también el worker en este proceso")
     p.set_defaults(func=cmd_serve)
 
     p = sub.add_parser("worker", help="corre el worker que procesa la cola de jobs")
@@ -288,9 +324,31 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _load_dotenv() -> None:
+    """Carga `.env` (del directorio actual o de la raíz del repo) sin pisar variables que ya
+    existan en el entorno. Parser mínimo KEY=VALUE, sin dependencias; nunca imprime valores."""
+    import os
+    from pathlib import Path
+
+    for path in (Path.cwd() / ".env", Path(__file__).resolve().parents[2] / ".env"):
+        if not path.is_file():
+            continue
+        for raw in path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            value = value.strip().strip('"').strip("'")
+            if value:
+                os.environ.setdefault(key.strip(), value)
+        return
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command != "demo":  # la demo ignora el entorno a propósito
+        _load_dotenv()
     settings = Settings.from_env()
     return args.func(args, settings)
 

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#0E6B57"/>
+  <!-- globo de conversación -->
+  <path d="M120 146h272a40 40 0 0 1 40 40v132a40 40 0 0 1-40 40H236l-72 58v-58h-44a40 40 0 0 1-40-40V186a40 40 0 0 1 40-40z" fill="#F4F6F2"/>
+  <!-- palomita: respuesta resuelta a tiempo -->
+  <path d="M190 256l44 44 92-100" fill="none" stroke="#0E6B57" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- reloj pequeño: la ventana de 48 h -->
+  <circle cx="392" cy="140" r="58" fill="#E3BD2A" stroke="#0E6B57" stroke-width="14"/>
+  <path d="M392 108v36l24 16" fill="none" stroke="#0E6B57" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
