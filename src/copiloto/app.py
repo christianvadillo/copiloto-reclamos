@@ -148,6 +148,20 @@ def create_app(settings: Settings, store: Store | None = None, http_client: http
             logger.debug("notificación duplicada ignorada: %s", dedupe_key)
         return {"status": "ok"}
 
+    # ── Calculadora pública (sin login): el imán de prospección ────────────────────────
+
+    @app.get("/calculadora", response_class=HTMLResponse)
+    def calculadora() -> HTMLResponse:
+        """Página estática y autocontenida (el mismo modelo de λ en JavaScript). Se publica tal
+        cual como Artifact; aquí se envuelve en su esqueleto HTML para servirla directo."""
+        page = (Path(__file__).parent / "web" / "calculadora.html").read_text(encoding="utf-8")
+        split = page.index('<div class="wrap">')
+        return HTMLResponse(
+            '<!doctype html><html lang="es"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">'
+            f"{page[:split]}</head><body>{page[split:]}</body></html>"
+        )
+
     # ── OAuth ───────────────────────────────────────────────────────────────────────────
 
     @app.get("/oauth/start")

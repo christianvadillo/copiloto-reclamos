@@ -140,3 +140,10 @@ aprobación humana por defecto. Repo local + remoto privado en GitHub.
      solo se registran cuando se pueden inferir. XSS en `/oauth/callback` escapado.
   La tarea de no-determinismo del Monte Carlo la resolvió la sesión aparte (`_ESC_ACTIONS` +
   `tests/test_decision_determinism.py`). Total: 153 tests verdes, ruff limpio, demo coherente.
+- 2026-09-19 — Sandbox interactivo (`copiloto sandbox`): panel real + worker + consola donde se
+  hace de comprador/ML; verificado en el navegador el ciclo aprobar → oferta 30 % → acepta →
+  Outcome registrado. La API falsa ahora sigue la regla de 48 h en `affects-reputation`.
+- 2026-09-19 — Calculadora pública `/calculadora` (primer escalón del embudo comercial, sin
+  acceso a la cuenta): holgura, costo mensual de bajar de nivel y λ por reclamo con la curva.
+  Modelo portado a JS y verificado contra Python (n=8/11/12/13 → 1,753/6,808/9,696/8,027 con
+  L=$60k; vendedor grande idéntico). Publicada también como Artifact privado.

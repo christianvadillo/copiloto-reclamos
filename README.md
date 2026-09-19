@@ -92,6 +92,16 @@ Reclamo  Categoría    Acción           E[costo]  P(mejor)  λ    Borrador (ini
   oferta de reembolso parcial registrada en Mercado Libre (simulado): 30%
 ```
 
+## Calculadora pública (`/calculadora`)
+
+Página sin login que el servicio sirve en `/calculadora` y que también vive como Artifact
+compartible. El vendedor escribe sus ventas de 60 días, los reclamos que ya cuentan, su nivel y
+cuántos envíos gratis paga, y ve: cuántos reclamos le caben antes de bajar de color, cuánto le
+costaría al mes bajar (diferencia de descuento en envíos + la pérdida de ventas que él estime) y
+cuánto vale en pesos cada reclamo adicional que cuente, con la curva completa. Usa el mismo
+modelo de `decision/reputation.py` portado a JavaScript (verificado: mismos números que Python).
+Es el primer escalón del embudo: no pide acceso a la cuenta.
+
 ## Modos: shadow / approve / auto
 
 | Modo | Qué hace |

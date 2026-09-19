@@ -87,3 +87,15 @@ def test_reject_records_decision(app_client, store, settings, meli, seller_regis
     rejected_events = [e for e in store.list_events(claim_id="1001") if e["kind"] == "rejected"]
     assert len(rejected_events) == 1
     assert store.job_counts().get("queued", 0) == 0  # rechazar no ejecuta nada
+
+
+def test_public_calculator_needs_no_auth(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from copiloto.app import create_app
+    from copiloto.config import Settings
+
+    settings = Settings(db_path=str(tmp_path / "c.db"), dashboard_user="u", dashboard_password="p")
+    resp = TestClient(create_app(settings)).get("/calculadora")
+    assert resp.status_code == 200
+    assert "<title>Termómetro en riesgo</title>" in resp.text and "shadowPrice" in resp.text
