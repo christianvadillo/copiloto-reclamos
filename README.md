@@ -5,6 +5,53 @@ junta evidencia, calcula la resolución de **menor costo esperado** y deja la re
 redactada — todo en minutos, con aprobación humana por defecto. Nunca ejecuta nada por sí solo
 salvo que se lo pidas explícitamente (modo `auto`, y con topes).
 
+**Estado: funciona de punta a punta contra la API real de Mercado Libre; en pausa comercial.**
+El 19-sep-2026 procesó un reclamo real (`5579999933`) de principio a fin: webhook → clasificación
+→ recomendación → borrador → ejecución (mensaje + reembolso) → Mercado Libre lo cerró como
+`payment_refunded` → el resultado quedó registrado para actualizar los priors. El detalle, con el
+contrato real de la API, está en [`docs/PRUEBA_REAL.md`](docs/PRUEBA_REAL.md). No se llevó a
+producción con vendedores reales: es una decisión de asignación de tiempo, no una limitación
+técnica.
+
+## Qué demuestra este proyecto
+
+| | |
+|---|---|
+| **Decisión bajo incertidumbre** | No es un clasificador que dice "reembolsa". Ordena las acciones por costo esperado con Monte Carlo sobre posteriores Beta, reporta intervalos de credibilidad y P(mejor opción), y manda a revisión humana cuando ninguna opción domina. |
+| **Modelar lo que no es dinero** | La reputación no aparece en ningún endpoint como un costo. Se modela como precio sombra (λ): días extra en el nivel de abajo si este reclamo cuenta, integrando la probabilidad de cruzar el umbral con reclamos que entran (Gamma–Poisson) y salen (Binomial) de la ventana de 60 días. |
+| **Integración real, no de juguete** | OAuth con PKCE y rotación de refresh tokens, webhook que responde en menos de 500 ms y encola, worker aparte, cola SQLite con reintentos, idempotencia por pasos para que nada que mueva dinero se repita, y reconciliación por si se pierde una notificación. |
+| **Seguridad de un agente con LLM** | El borrador lo escribe Claude, pero los montos y porcentajes los fija el código y un guardrail determinista rechaza cualquier borrador que invente una cifra distinta. Los datos personales del comprador nunca llegan al modelo. Si el LLM falla, cae a plantillas. |
+| **Honestidad sobre los supuestos** | Los priors son juicio experto y el README lo dice; se diluyen conforme entran casos reales. Cada supuesto no verificado contra la API está marcado `[supuesto]` en el código. |
+
+### Capturas
+
+Panel de reclamos abiertos, ordenados por urgencia (cada uno con su acción recomendada y λ):
+
+![Panel de reclamos abiertos](docs/capturas/panel-lista.png)
+
+Detalle de un reclamo: ranking de acciones con costo esperado e intervalo, las razones en
+lenguaje llano, y el borrador editable antes de aprobar.
+
+![Detalle de un reclamo](docs/capturas/reclamo-simulador.png)
+
+El reclamo real que se procesó en vivo (modo sombra, cuenta de prueba de Mercado Libre):
+
+![Reclamo real](docs/capturas/reclamo-real.png)
+
+### La lección más cara
+
+159 pruebas en verde no detectaron **seis** diferencias entre el simulador y la API real, porque
+el simulador estaba escrito con los mismos supuestos que el código: validaba consistencia, no el
+contrato. La peor de las seis: la orden llega en un campo distinto del que suponía, así que el
+monto del reclamo salía en $0 — sin lanzar un error, sin romper ninguna prueba, y con una
+recomendación que se veía perfectamente razonable. La tabla completa de diferencias está en
+[`docs/PRUEBA_REAL.md`](docs/PRUEBA_REAL.md).
+
+### Cómo contarlo
+
+Guion de tres minutos, con las preguntas que suelen venir después y qué archivos enseñar:
+[`docs/GUION_ENTREVISTA.md`](docs/GUION_ENTREVISTA.md).
+
 ## La tesis: el daño de un reclamo es de tiempo, no de razón
 
 `GET /post-purchase/v1/claims/{id}/affects-reputation` devuelve `has_incentive`: si el
@@ -23,33 +70,36 @@ existe para que ninguna ventana de 48 horas se pierda por descuido, y para poner
 
 ## Flujo
 
+```mermaid
+flowchart TD
+    ML[Mercado Libre] -->|POST /notifications| WH[webhook<br/>200 en &lt;500 ms · dedupe]
+    WH --> Q[(cola SQLite)]
+    REC[reconciliador<br/>claims/search + missed_feeds] --> Q
+    Q --> W[worker]
+    W --> CTX[lee claim, motivo, orden, envio,<br/>mensajes, expected-resolutions,<br/>affects-reputation, fotos]
+    CTX --> CLS[clasifica<br/>taxonomy]
+    CTX --> EV[puntua evidencia<br/>decision/evidence]
+    CTX --> REP["reputacion del vendedor<br/>lambda = precio sombra"]
+    CLS --> DEC{recomendador<br/>Monte Carlo sobre la posterior}
+    EV --> DEC
+    REP --> DEC
+    DEC --> DR[redacta con Claude<br/>+ guardrails deterministas]
+    DR --> UI[dashboard / CLI]
+    UI -->|aprueba| EX[ejecuta con idempotencia por pasos]
+    EX --> ML
+    EX --> OUT[resultado del cierre]
+    OUT --> PB[(PriorBook<br/>los priors dejan de ser solo juicio experto)]
+    PB -.alimenta.-> DEC
 ```
-Mercado Libre ──POST /notifications──► webhook (200 en <500 ms, dedupe, cola SQLite)
-                                              │
-                                     worker ◄─┘  (+ reconciliador: claims/search + missed_feeds)
-                                       │
-       trae: claim + detail + reason + expected-resolutions + affects-reputation
-             + orden + envío(+historial) + mensajes + fotos locales
-                                       │
-          clasifica (taxonomy) ──► puntúa evidencia (decision/evidence)
-                                       │
-          reputación del vendedor (GET /users/{id}) ──► λ (decision/reputation)
-                                       │
-          recomienda (decision/recommender — Monte Carlo sobre la posterior)
-                                       │
-          redacta (Claude + guardrails deterministas; plantilla si el LLM falla)
-                                       │
-          persiste ──► dashboard / CLI ──► aprueba ──► ejecuta (taxonomy.execution_plan)
-                                       │
-          al cerrar: resultado ──► Outcome ──► PriorBook (el vendedor deja de depender
-                                                 solo de priors de juicio experto)
-```
+
+El detalle campo por campo de cada paso está en
+[`docs/ARQUITECTURA.md`](docs/ARQUITECTURA.md).
 
 ## Quickstart
 
 ```bash
 make install   # crea .venv e instala el paquete en modo editable con dependencias de dev
-make test      # 156 tests, sin red, en ~4 s
+make test      # 165 tests, sin red, en ~4 s
 make demo      # el flujo COMPLETO, offline, contra un simulador de Mercado Libre
 .venv/bin/copiloto sandbox   # panel + worker vivos contra el simulador; tú haces de comprador
 ```
@@ -150,11 +200,11 @@ notificaciones. Coordinan solo a través de la misma base SQLite (WAL).
 
 ## Conectar a Mercado Libre real
 
-Todo lo anterior corre offline contra `copiloto.meli.fake`. Para conectarlo a la Mercado Libre
-real (crear la app en DevCenter, túnel HTTPS, usuarios de prueba, comprar y abrir un reclamo de
-verdad) sigue el runbook paso a paso de **[`docs/PRUEBA_REAL.md`](docs/PRUEBA_REAL.md)** —
-incluye la advertencia de que no está documentado que reclamos/mediaciones funcionen con
-usuarios de prueba, y un plan B con vendedor real en modo `shadow`.
+Todo lo anterior corre offline contra `copiloto.meli.fake`. El runbook paso a paso para
+conectarlo a la Mercado Libre real (app en DevCenter, túnel HTTPS, usuarios de prueba, comprar y
+abrir un reclamo de verdad) está en **[`docs/PRUEBA_REAL.md`](docs/PRUEBA_REAL.md)**, junto con
+el resultado de haberlo hecho: los reclamos **sí** funcionan con usuarios de prueba, y la tabla
+de las seis diferencias entre la API real y lo que suponía el simulador.
 
 ## Supuestos y limitaciones
 
