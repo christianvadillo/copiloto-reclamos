@@ -153,3 +153,9 @@ aprobación humana por defecto. Repo local + remoto privado en GitHub.
   fake: tópico `post_purchase`, search en `data`, orden en `resource_id`, expected-resolutions en
   lista, returns 404 y `logistic.type` anidado; `/missed_feeds` da 401 a quien no es dueño. La
   orden no se leía, así que el monto salía en $0; ahora sale en $500. 163 tests.
+- 2026-09-19 — **Ciclo completo en vivo.** Aprobé y ejecuté el reembolso del reclamo de prueba
+  5579999933 (candado: solo vendedor TESTUSER, modo approve solo para esa corrida). Pasos:
+  send-message → refund, ejecución `done`; ML lo cerró en ~1 s (`payment_refunded`,
+  closed_by respondent, benefited complainant) y el copiloto registró el resultado en
+  `outcomes`. Bug encontrado al reiniciar el servidor a mitad de un job: los jobs en `running`
+  nunca se retomaban → lease de 10 min en `claim_job`. 165 tests.

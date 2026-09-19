@@ -25,7 +25,7 @@ import sqlite3
 import threading
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -414,20 +414,27 @@ class Store:
             )
             return int(cur.lastrowid)
 
-    def claim_job(self) -> Job | None:
+    def claim_job(self, lease_seconds: float = 600.0) -> Job | None:
         """Toma atómicamente el job más antiguo listo para correr (BEGIN IMMEDIATE: adquiere
-        el lock de escritura antes de decidir cuál tomar, así dos workers nunca chocan)."""
+        el lock de escritura antes de decidir cuál tomar, así dos workers nunca chocan).
+
+        Lease: un job en `running` cuyo `updated_at` tenga más de `lease_seconds` se considera
+        huérfano (el proceso murió a mitad, visto en vivo al reiniciar el servidor) y se vuelve a
+        tomar mientras le queden intentos. Es seguro: `process_claim` recalcula desde la API y
+        `execute` tiene idempotencia por pasos (un paso `pending` queda EN DUDA, no se repite)."""
         now = _now()
+        stale = (datetime.now(UTC) - timedelta(seconds=lease_seconds)).isoformat()
         with self._lock:
             self._conn.execute("BEGIN IMMEDIATE")
             try:
                 row = self._conn.execute(
                     """
                     SELECT * FROM jobs
-                    WHERE status = 'queued' AND (next_run_at IS NULL OR next_run_at <= ?)
+                    WHERE (status = 'queued' AND (next_run_at IS NULL OR next_run_at <= ?))
+                       OR (status = 'running' AND updated_at <= ? AND attempts < max_attempts)
                     ORDER BY id LIMIT 1
                     """,
-                    (now,),
+                    (now, stale),
                 ).fetchone()
                 if row is None:
                     self._conn.execute("COMMIT")
