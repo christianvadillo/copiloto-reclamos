@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Reclamos abiertos — Copiloto{% endblock %}
+{% block content %}
+<h1>Reclamos abiertos</h1>
+{% if not claims %}
+<p class="muted">No hay reclamos abiertos. Cuando llegue una notificación aparecerá aquí en segundos.</p>
+{% else %}
+<table>
+<thead>
+<tr>
+  <th>Reclamo</th><th>Categoría</th><th>Monto</th><th>Acción recomendada</th><th>P(mejor)</th><th>λ</th><th>Vence</th>
+</tr>
+</thead>
+<tbody>
+{% for row in claims %}
+<tr>
+  <td data-label="Reclamo"><a href="/claims/{{ row.claim.claim_id }}">{{ row.claim.claim_id }}</a></td>
+  <td data-label="Categoría">{{ row.claim.category or "sin clasificar" }}</td>
+  <td data-label="Monto">${{ "%.0f"|format(row.claim.amount or 0) }}</td>
+  <td data-label="Acción recomendada">{{ row.rec.action if row.rec else "—" }}</td>
+  <td data-label="P(mejor)">{{ "%.0f%%"|format((row.rec.prob_best or 0) * 100) if row.rec else "—" }}</td>
+  <td data-label="λ">${{ "%.0f"|format(row.rec.reputation_lambda or 0) if row.rec else "—" }}</td>
+  <td data-label="Vence" class="{{ row.countdown_class }}">{{ row.countdown }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+{% endif %}
+{% endblock %}

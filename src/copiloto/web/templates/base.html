@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Copiloto de reclamos{% endblock %}</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg:#f7f7f8; --card:#ffffff; --text:#1a1a1a; --muted:#666666; --border:#e2e2e2;
+    --accent:#0a6cff; --danger:#c0392b; --danger-bg:#fdecea; --danger-border:#f5c2bd;
+    --warn:#b7791f; --ok:#1e8e3e;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background:var(--bg); color:var(--text); }
+  header { background:var(--card); border-bottom:1px solid var(--border); padding:12px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+  header a { color:var(--text); text-decoration:none; font-weight:700; }
+  main { max-width:1100px; margin:0 auto; padding:20px 16px 60px; }
+  h1 { font-size:1.4rem; }
+  h2 { font-size:1.1rem; margin-top:0; }
+  .badge { display:inline-block; padding:3px 10px; border-radius:999px; font-size:.78rem; font-weight:700; background:#eef2ff; color:#3730a3; }
+  table { width:100%; border-collapse:collapse; background:var(--card); border-radius:10px; overflow:hidden; }
+  th, td { text-align:left; padding:10px 12px; border-bottom:1px solid var(--border); font-size:.92rem; vertical-align:top; }
+  th { background:#fafafa; font-weight:700; color:var(--muted); }
+  tr:last-child td { border-bottom:none; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:16px 18px; margin-bottom:16px; }
+  .urgent { color:var(--danger); font-weight:700; }
+  .soon { color:var(--warn); font-weight:700; }
+  .ok { color:var(--ok); }
+  textarea { width:100%; min-height:120px; font-family:inherit; font-size:.95rem; padding:10px; border-radius:8px; border:1px solid var(--border); resize:vertical; }
+  button { cursor:pointer; border:none; border-radius:8px; padding:10px 18px; font-size:.92rem; font-weight:700; }
+  .btn-approve { background:var(--ok); color:#fff; }
+  .btn-reject { background:var(--danger); color:#fff; }
+  .btn-approve:hover, .btn-reject:hover { filter:brightness(0.93); }
+  .muted { color:var(--muted); font-size:.85rem; }
+  .violations { background:var(--danger-bg); border:1px solid var(--danger-border); color:var(--danger); padding:10px 14px; border-radius:8px; margin-bottom:12px; }
+  .rationale { padding-left:1.2em; }
+  .rationale li { margin-bottom:4px; }
+  a { color:var(--accent); }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#111214; --card:#1b1c1f; --text:#eaeaea; --muted:#9a9a9a; --border:#2c2d31; }
+    th { background:#202124; }
+    .badge { background:#1e2340; color:#c7d2fe; }
+    .violations { background:#3a1f1d; border-color:#5a2b26; color:#f0a29a; }
+  }
+  @media (max-width: 640px) {
+    table, thead, tbody, th, td, tr { display:block; }
+    thead { display:none; }
+    tr { margin-bottom:12px; border:1px solid var(--border); border-radius:8px; padding:6px 8px; }
+    td { border:none; padding:5px 4px; }
+    td::before { content: attr(data-label) ": "; font-weight:700; color:var(--muted); }
+  }
+</style>
+</head>
+<body>
+<header>
+  <a href="/">Copiloto de reclamos</a>
+  <span class="badge">modo: {{ mode }}</span>
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

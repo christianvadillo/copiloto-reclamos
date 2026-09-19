@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "copiloto-reclamos"
+version = "0.1.0"
+description = "Copiloto de reclamos para vendedores de Mercado Libre: clasifica, junta evidencia, redacta y recomienda la resolución de menor costo esperado."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Propietario" }
+authors = [{ name = "Christian Vadillo" }]
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "httpx>=0.27",
+    "pydantic>=2.7",
+    "jinja2>=3.1",
+    "anthropic>=1.7,<2",
+    "cryptography>=43",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+copiloto = "copiloto.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/copiloto"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

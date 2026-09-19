@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Reclamo {{ claim.claim_id }} — Copiloto{% endblock %}
+{% block content %}
+<p><a href="/">&larr; volver a la lista</a></p>
+<h1>Reclamo {{ claim.claim_id }}</h1>
+
+<div class="card">
+  <p><strong>Categoría:</strong> {{ claim.category or "sin clasificar" }}
+     ({{ "%.0f%%"|format((claim.confidence or 0) * 100) }} de confianza)</p>
+  <p><strong>Monto:</strong> ${{ "%.2f"|format(claim.amount or 0) }}
+     &middot; <strong>Estado:</strong> {{ claim.status }} / {{ claim.stage }}
+     &middot; <strong>Motivo:</strong> {{ claim.reason_id or "—" }}</p>
+  <p><strong>Evidencia del vendedor:</strong> {{ "%.0f%%"|format((claim.evidence_score or 0) * 100) }}</p>
+</div>
+
+{% if rec %}
+<div class="card">
+  <h2>Ranking de acciones</h2>
+  <table>
+    <thead><tr><th>Acción</th><th>E[costo]</th><th>IC 90%</th><th>P(mejor)</th></tr></thead>
+    <tbody>
+    {% for e in rec.ranking %}
+    <tr>
+      <td data-label="Acción">{{ e.action }}{% if e.action == rec.action %} &#11088; recomendada{% endif %}</td>
+      <td data-label="E[costo]">${{ "%.0f"|format(e.expected_cost) }}</td>
+      <td data-label="IC 90%">${{ "%.0f"|format(e.cost_p05) }} – ${{ "%.0f"|format(e.cost_p95) }}</td>
+      <td data-label="P(mejor)">{{ "%.0f%%"|format(e.prob_best * 100) }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <h2 style="margin-top:16px;">Por qué</h2>
+  <ul class="rationale">
+    {% for r in rec.rationale %}<li>{{ r }}</li>{% endfor %}
+  </ul>
+  <p class="muted">λ (costo de reputación por reclamo que cuenta): ${{ "%.0f"|format(rec.reputation_lambda) }}
+     &middot; holgura: {{ rec.reputation_headroom }}</p>
+  {% if rec.requires_approval %}
+  <p class="muted"><strong>Requiere aprobación:</strong> {{ rec.approval_reasons|join("; ") }}</p>
+  {% endif %}
+</div>
+{% else %}
+<p class="muted">Todavía no hay una recomendación para este reclamo.</p>
+{% endif %}
+
+<div class="card">
+  <h2>Evidencia</h2>
+  {% set shipment = (claim.snapshot or {}).get("shipment") or {} %}
+  {% if shipment %}
+  <p>Envío: {{ shipment.get("status") or "desconocido" }}
+     &middot; logística: {{ shipment.get("logistic_type") or "—" }}
+     &middot; guía: {{ shipment.get("tracking_number") or "—" }}</p>
+  {% else %}
+  <p class="muted">Sin datos de envío para este reclamo.</p>
+  {% endif %}
+</div>
+
+{% if violations %}
+<div class="violations">
+  <strong>El mensaje editado no se puede enviar tal cual:</strong>
+  <ul>{% for v in violations %}<li>{{ v }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+{% if draft %}
+<div class="card">
+  <h2>Borrador de respuesta</h2>
+  <p class="muted">
+    Fuente: {{ draft.source }}{% if draft.model %} ({{ draft.model }}){% endif %}
+    &middot; límite {{ max_chars }} caracteres
+  </p>
+  <form method="post" action="/claims/{{ claim.claim_id }}/approve">
+    <textarea name="message" maxlength="{{ max_chars }}">{{ edited_message or draft.message }}</textarea>
+    <p class="muted">{{ draft.seller_summary }}</p>
+    {% if draft.risks %}<p class="muted">Riesgos señalados: {{ draft.risks|join("; ") }}</p>{% endif %}
+    <button type="submit" class="btn-approve">Aprobar y enviar</button>
+  </form>
+  <form method="post" action="/claims/{{ claim.claim_id }}/reject" style="margin-top:10px;">
+    <button type="submit" class="btn-reject">Rechazar</button>
+  </form>
+</div>
+{% else %}
+<p class="muted">Todavía no hay un borrador para este reclamo.</p>
+{% endif %}
+{% endblock %}
