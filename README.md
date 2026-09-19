@@ -49,9 +49,19 @@ Mercado Libre ──POST /notifications──► webhook (200 en <500 ms, dedupe
 
 ```bash
 make install   # crea .venv e instala el paquete en modo editable con dependencias de dev
-make test      # 138 tests del servicio + 31 del núcleo, sin red, en ~3 s
+make test      # 156 tests, sin red, en ~4 s
 make demo      # el flujo COMPLETO, offline, contra un simulador de Mercado Libre
+.venv/bin/copiloto sandbox   # panel + worker vivos contra el simulador; tú haces de comprador
 ```
+
+**Probarlo a mano: `copiloto sandbox`.** Levanta el dashboard real en `http://127.0.0.1:8000/`
+con un worker en segundo plano y una consola en `/sandbox` donde tú haces de comprador y de
+Mercado Libre: abrir reclamos nuevos desde 7 plantillas, aceptar o rechazar una oferta, pedir
+mediación y que ML falle a favor de uno u otro. Apruebas o rechazas en el panel y ves cómo el
+copiloto ejecuta contra la API simulada y registra el resultado del cierre (lo que alimenta el
+aprendizaje de los priors). `--llm` hace que los borradores los escriba Claude con tu
+`ANTHROPIC_API_KEY` (cuesta centavos por borrador); sin esa bandera se usan plantillas y nada
+sale a la red.
 
 `make demo` (o `.venv/bin/copiloto demo`) es la forma de validar de punta a punta **desde tu
 computadora, sin credenciales ni red**: levanta un simulador de la API de Mercado Libre en el
@@ -66,20 +76,20 @@ esa semilla en un orden fijo, así que cada corrida da la misma tabla aunque cam
 del proceso (lo cubre `tests/test_decision_determinism.py`):
 
 ```
-Reclamo  Categoría    Acción           E[costo]  P(mejor)  λ    Borrador (inicio)
+Reclamo  Categoría    Acción           E[costo]  P(mejor)  λ    Borrador (inicio)                          
 -------  -----------  ---------------  --------  --------  ---  -------------------------------------------
 1001     no_recibido  defend           $70       100%      $17  Hola, el rastreo de Mercado Envíos muestra…
-1002     no_recibido  inform_tracking  $197      100%      $17  Hola, tu paquete sigue en camino (guía MLX…
-2001     defectuoso   defend           $263      87%       $17  Hola, revisamos tu caso con la evidencia d…
-2002     diferente    defend           $212      80%       $17  Hola, revisamos tu caso con la evidencia d…
-2003     devolucion   partial_refund   $191      83%       $17  Hola, te ofrecemos un reembolso parcial de…
-3001     incompleto   partial_refund   $134      95%       $17  Hola, te ofrecemos un reembolso parcial de…
+1002     no_recibido  inform_tracking  $196      100%      $17  Hola, tu paquete sigue en camino (guía MLX…
+2001     defectuoso   partial_refund   $760      100%      $17  Hola, te ofrecemos un reembolso parcial de…
+2002     diferente    partial_refund   $369      100%      $17  Hola, te ofrecemos un reembolso parcial de…
+2003     devolucion   partial_refund   $301      100%      $17  Hola, te ofrecemos un reembolso parcial de…
+3001     incompleto   partial_refund   $182      100%      $17  Hola, te ofrecemos un reembolso parcial de…
 4001     cancelacion  inform_tracking  $152      100%      $17  Hola, tu pedido va en camino (guía MLXX000…
 
-→ Aprobando y ejecutando el reclamo 2003 (acción: partial_refund)...
+→ Aprobando y ejecutando el reclamo 2001 (acción: partial_refund)...
   mensajes al comprador en Mercado Libre (simulado): 1 → 2
   estado del reclamo: opened → opened
-  oferta de reembolso parcial registrada en Mercado Libre (simulado): 20%
+  oferta de reembolso parcial registrada en Mercado Libre (simulado): 30%
 ```
 
 ## Modos: shadow / approve / auto

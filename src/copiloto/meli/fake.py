@@ -74,6 +74,7 @@ class FakeMeliState:
     refresh_tokens: dict[str, str] = field(default_factory=dict)  # refresh_token -> seller_id
     missed_feed_claim_ids: list[str] = field(default_factory=list)
     claim_has_incentive: dict[str, bool] = field(default_factory=dict)
+    templates: dict[str, dict[str, Any]] = field(default_factory=dict)  # kwargs de cada new_claim
     _test_user_seq: int = 0
 
     # ── Autenticación ───────────────────────────────────────────────────────────────────
@@ -155,6 +156,8 @@ class FakeMeliState:
         partial_pcts: tuple[int, ...] = (),
         has_incentive: bool = True,
     ) -> dict:
+        # Primero que nada: los parámetros quedan como plantilla para clonar escenarios (sandbox).
+        self.templates.setdefault(claim_id, {k: v for k, v in locals().items() if k not in ("self", "claim_id")})
         now = _now()
         order_id = f"O{claim_id}"
         shipment_id = f"S{claim_id}"
@@ -242,6 +245,53 @@ class FakeMeliState:
                     p["available_actions"] = []
         return view
 
+    # ── Lo que hacen el comprador y Mercado Libre (sandbox interactivo) ─────────────────────
+
+    def _set_respondent_actions(self, claim_id: str, actions: list[str]) -> None:
+        due = self.due_dates.get(claim_id)
+        for player in self.claims[claim_id]["players"]:
+            if player["role"] == "respondent":
+                player["available_actions"] = [
+                    {"action": a, "due_date": _iso(due) if due else None, "mandatory": False} for a in actions
+                ]
+
+    def buyer_message(self, claim_id: str, text: str) -> None:
+        self.messages.setdefault(claim_id, []).append(
+            {"sender_role": "complainant", "message": text, "date": _iso(_now())}
+        )
+        self.log_action(claim_id, "send_message_to_respondent", role="complainant")
+
+    def buyer_accepts_offer(self, claim_id: str) -> None:
+        claim = self.claims[claim_id]
+        pct = claim.pop("pending_partial_offer", None)
+        claim["status"] = "closed"
+        claim["resolution"] = {
+            "reason": "partial_refunded" if pct else "respondent_resolved",
+            "benefited": ["complainant"],
+            "closed_by": "complainant",
+        }
+        self.log_action(claim_id, "accept_offer", role="complainant")
+
+    def buyer_rejects_offer(self, claim_id: str, text: str = "No acepto, quiero el reembolso completo.") -> None:
+        self.claims[claim_id].pop("pending_partial_offer", None)
+        self.buyer_message(claim_id, text)
+
+    def buyer_escalates(self, claim_id: str) -> None:
+        claim = self.claims[claim_id]
+        claim["stage"] = "dispute"
+        self.status_history.setdefault(claim_id, []).append({"stage": "dispute", "date": _iso(_now())})
+        self.claim_has_incentive[claim_id] = False
+        self._set_respondent_actions(claim_id, ["send_message_to_mediator", "refund"])
+        self.log_action(claim_id, "open_dispute", role="complainant")
+
+    def ml_resolves(self, claim_id: str, favor: str) -> None:
+        """`favor`: "respondent" (vendedor) o "complainant" (comprador)."""
+        claim = self.claims[claim_id]
+        claim["status"] = "closed"
+        reason = "mediation_in_favor_of_seller" if favor == "respondent" else "payment_refunded"
+        claim["resolution"] = {"reason": reason, "benefited": [favor], "closed_by": "mediator"}
+        self.log_action(claim_id, "resolve", role="mediator")
+
     def log_action(self, claim_id: str, action_name: str, role: str = "respondent") -> None:
         claim = self.claims.get(claim_id, {})
         self.actions_history.setdefault(claim_id, []).append(
@@ -255,14 +305,23 @@ class FakeMeliState:
         )
 
     def affects_reputation_payload(self, claim_id: str) -> dict:
-        has_incentive = self.claim_has_incentive.get(claim_id, True)
+        """Imita la regla verificada: resolver bien dentro de las 48 h (ventana de incentivo)
+        evita que el reclamo cuente; perder la mediación o dejar pasar la ventana, cuenta."""
         claim = self.claims.get(claim_id, {})
-        if claim.get("status") != "opened":
-            has_incentive = False
+        in_window = self.claim_has_incentive.get(claim_id, True)
         due = self.due_dates.get(claim_id)
+        if claim.get("status") == "opened":
+            affects = "not_affected" if in_window else "affected"
+            has_incentive = in_window
+        else:
+            resolution = claim.get("resolution") or {}
+            won = "respondent" in (resolution.get("benefited") or [])
+            agreed = resolution.get("closed_by") in {"respondent", "complainant"}
+            affects = "not_affected" if (won or (agreed and in_window)) else "affected"
+            has_incentive = False
         return {
             # Vocabulario verificado: affected | not_affected | not_applies.
-            "affects_reputation": "not_affected" if has_incentive else "affected",
+            "affects_reputation": affects,
             "has_incentive": has_incentive,
             "due_date": _iso(due) if (due and has_incentive) else None,
         }

@@ -221,6 +221,36 @@ def cmd_demo(_args: argparse.Namespace, settings: Settings) -> int:
     return 0
 
 
+def cmd_sandbox(args: argparse.Namespace, settings: Settings) -> int:
+    """Dashboard real + worker + consola `/sandbox` contra la API simulada, para probar a mano."""
+    import uvicorn
+
+    from copiloto.sandbox import build_sandbox
+
+    llm_client = None
+    if args.llm:
+        try:
+            import anthropic
+
+            llm_client = anthropic.Anthropic()
+        except Exception as exc:  # sin credenciales: seguir con plantillas
+            print(f"aviso: no se pudo crear el cliente de Claude ({exc}); se usan plantillas", file=sys.stderr)
+    sb = build_sandbox(settings, llm_client=llm_client)
+    sb.start_worker()
+    base = f"http://{args.host}:{args.port}"
+    print("Sandbox del copiloto (API de Mercado Libre SIMULADA; nada toca tu cuenta real)")
+    print(f"  Panel del copiloto:        {base}/")
+    print(f"  Consola comprador / ML:    {base}/sandbox")
+    print(f"  Redacción:                 {'Claude (' + sb.settings.llm_model + ')' if llm_client else 'plantillas'}")
+    print(f"  Base de datos:             {sb.settings.db_path}")
+    print("  Ctrl+C para salir.")
+    try:
+        uvicorn.run(sb.app, host=args.host, port=args.port, log_level="warning")
+    finally:
+        sb.stop()
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="copiloto", description="Copiloto de reclamos para Mercado Libre México.")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -248,6 +278,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("demo", help="corre el flujo completo offline contra la API falsa")
     p.set_defaults(func=cmd_demo)
+
+    p = sub.add_parser("sandbox", help="dashboard + worker contra la API simulada; tú haces de comprador")
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--port", type=int, default=8000)
+    p.add_argument("--llm", action="store_true", help="redactar con Claude (usa tu ANTHROPIC_API_KEY; cuesta)")
+    p.set_defaults(func=cmd_sandbox)
 
     return parser
 
